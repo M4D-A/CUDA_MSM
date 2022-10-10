@@ -2,6 +2,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <memory.h>
+#include <stdexcept>
+void print(uint64_t* a, int n) {
+    for (int i = 0; i < n; i++) {
+        printf("%016lX ", a[n-1-i]);
+    }
+    printf("\n");
+}
 
 bool geq(uint64_t *a, uint64_t *b, int n) {
     for (int i = n-1; i >= 0; i--) {
@@ -26,7 +33,25 @@ bool eq(uint64_t *a, uint64_t *b, int n) {
     return true;
 }
 
+bool is_zero(uint64_t *a, int n) {
+    for (int i = n-1; i >= 0; i--) {
+        if (a[i] != 0) return false;
+    }
+    return true;
+}
+
+bool is_one(uint64_t *a, int n) {
+    for (int i = n-1; i >= 1; i--) {
+        if (a[i] != 0) return false;
+    }
+    return a[0] == 1;
+}
+
 void lshift(uint64_t *result, uint64_t* a, int shift, int n){
+    if(shift == 0){
+        memcpy(result, a, n*sizeof(uint64_t));
+        return;
+    }
     int bit_shift = shift % 64;
     int word_shift = shift / 64;
     for (int i = n-1; i >= 0; i--) {
@@ -78,6 +103,21 @@ void div(uint64_t* quotient, uint64_t* residue, uint64_t* a, uint64_t* b, int n)
     memset(quotient, 0, n * sizeof(uint64_t));
     memcpy(residue, a, n * sizeof(uint64_t));
 
+    if (is_zero(b, n)) throw std::runtime_error("Division by zero");
+    if(geq(b, a, n)) return;
+
+    if (is_one(b, n)) {
+        memcpy(quotient, a, n * sizeof(uint64_t));
+        memset(residue, 0, n * sizeof(uint64_t));
+        return;
+    }
+
+    if(eq(b, residue, n)) {
+        quotient[0] = 1;
+        memset(residue, 0, n * sizeof(uint64_t));
+        return;
+    }
+
     uint64_t ta = 0;
     for(int i = n-1; i >= 0; i--) {
         if(b[i]==0) ta+=64;
@@ -95,7 +135,6 @@ void div(uint64_t* quotient, uint64_t* residue, uint64_t* a, uint64_t* b, int n)
         }
     }
     
-
     int64_t dt = ta - tb;
     lshift(b, b, dt, n);
     for(; dt >= 0; dt--) {
@@ -107,6 +146,43 @@ void div(uint64_t* quotient, uint64_t* residue, uint64_t* a, uint64_t* b, int n)
         }
         if(dt > 0)rshift(b, b, 1, n);
     }
+}
+
+void egcd(uint64_t *x, uint64_t *y, uint64_t *d, uint64_t* a, uint64_t* b, int n) {
+    uint64_t  R[8] = {0,0,0,0,0,0,0,0};
+    uint64_t OR[8] = {0,0,0,0,0,0,0,0};
+    memcpy(OR, a, n * sizeof(uint64_t));
+    memcpy( R, b, n * sizeof(uint64_t));
+
+    uint64_t  S[8] = {0,0,0,0,0,0,0,0};
+    uint64_t OS[8] = {1,0,0,0,0,0,0,0};
+    uint64_t  T[8] = {1,0,0,0,0,0,0,0};
+    uint64_t OT[8] = {0,0,0,0,0,0,0,0};
+
+    while(!is_zero(R,n)){
+        uint64_t Q[8] = {0,0,0,0,0,0,0,0};
+        uint64_t RQ[8] = {0,0,0,0,0,0,0,0};
+        div(Q, RQ, OR, R, n);
+        memcpy(OR, R, n * sizeof(uint64_t));
+        memcpy(R, RQ, n * sizeof(uint64_t));
+
+        uint64_t SQ[8] = {0,0,0,0,0,0,0,0};
+        uint64_t TSQ[8] = {0,0,0,0,0,0,0,0};
+        mul(SQ, Q, S, n);///
+        sub(TSQ, OS, SQ, n);
+        memcpy(OS, S, n * sizeof(uint64_t));
+        memcpy(S, TSQ, n * sizeof(uint64_t));
+
+        uint64_t TQ[8] = {0,0,0,0,0,0,0,0};
+        uint64_t OTQ[8] = {0,0,0,0,0,0,0,0};
+        mul(TQ, Q, T, n);
+        sub(OTQ, OT, TQ, n);
+        memcpy(OT, T, n * sizeof(uint64_t));
+        memcpy(T, OTQ, n * sizeof(uint64_t));
+    }
+
+
+
 }
 
 void mod_add(uint64_t* result, uint64_t* a, uint64_t* b, uint64_t* mod, int n) {
@@ -151,15 +227,14 @@ int main(){
     uint64_t Q[3] = {0,0,0};
 
 
-    for(int i = 0; i < 20; i++){
+    for(int i = 0; i < 30; i++){
         div(Q, R, A, B, 3);
-        for(int j = 0; j < 3; j++){
-            printf("%016lX ", R[2-j]);
-        }
-        printf("\n");
-        for(int j = 0; j < 3; j++){
-            printf("%016lX ", Q[2-j]);
-        }        
+
+        print(A,3);
+        print(B,3);
+        print(Q,3);
+        print(R,3);
+
         printf("\n\n");
         memcpy(A, B, 3 * sizeof(uint64_t));
         memcpy(B, R, 3 * sizeof(uint64_t));
