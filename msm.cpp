@@ -1,129 +1,170 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <memory.h>
 
-void m_add(uint32_t *A, uint32_t *B, uint32_t *C, uint32_t n) { // n-32 X n-32 -> (n+1)-32
-  uint32_t residue = 0;
-  uint32_t mask32 = 0xFFFFFFFF;
-  for (int64_t i = 0; i < n; i++) {
-    uint64_t sum = (uint64_t)A[i] + (uint64_t)B[i] + (uint64_t)residue;
-    residue = sum >> 32;
-    C[i] = sum & mask32;
-  }
-  C[n] += residue;
+bool geq(uint64_t *a, uint64_t *b, int n) {
+    for (int i = n-1; i >= 0; i--) {
+        if (a[i] > b[i]) return true;
+        if (a[i] < b[i]) return false;
+    }
+    return true;
 }
 
-void m_sub(uint32_t *A, uint32_t *B, uint32_t *C, uint32_t n) { // n-32 X n-32 -> (n+1)-32
-  uint32_t residue = 0;
-  uint32_t mask32 = 0xFFFFFFFF;
-  for (int64_t i = 0; i < n; i++) {
-    if(A[i] - residue >= B[i]) {
-        C[i] = A[i] - residue - B[i];
-        residue = 0;
-
-    } else {
-        C[i] = A[i] - residue - B[i];
-        residue = 1;
+bool leq(uint64_t *a, uint64_t *b, int n) {
+    for (int i = n-1; i >= 0; i--) {
+        if (a[i] < b[i]) return true;
+        if (a[i] > b[i]) return false;
     }
-  }
-  C[n] += residue;
+    return true;
 }
 
-void t3_mult(uint32_t A[3], uint32_t B[3], uint32_t C[6]){
-    uint32_t mask = 0xFFFFFFFF;
-
-    int64_t pt = A[0] + A[2];
-    int64_t p0 = A[0];
-    int64_t p1 = pt + A[1];
-    int64_t pn1 = pt - A[1];
-    int64_t pn2 = (pn1 + A[2]) * 2 - A[0];
-    int64_t pinf = A[2];
-
-    int64_t qt = B[0] + B[2];
-    int64_t q0 = B[0];
-    int64_t q1 = qt + B[1];
-    int64_t qn1 = qt - B[1];
-    int64_t qn2 = (qn1 + B[2]) * 2 - B[0];
-    int64_t qinf = B[2];
-
-    int64_t r0 = p0 * q0;
-    int64_t r1 = p1 * q1;
-    int64_t rn1 = pn1 * qn1;
-    int64_t rn2 = pn2 * qn2;
-    int64_t rinf = pinf * qinf;
-
-    int64_t c0 = r0;
-    int64_t c4 = rinf;
-    int64_t c3 = (rn2 - r1)/3;
-    int64_t c1 = (r1 - rn1)/2;
-    int64_t c2 = (rn1 - r0);
-    c3 = (c2-c3)/2 + 2*rinf;
-    c2 = c2 + c1 - c4;
-    c1 = c1 - c3;
-
-    C[0] = c0 & mask;
-    C[1] = c1 & mask + (c0 / (1lu << 32));
-    C[2] = c2 & mask + (c1 / (1lu << 32));
-    C[3] = c3 & mask + (c2 / (1lu << 32));
-    C[4] = c4 & mask + (c3 / (1lu << 32));
-    C[5] = (c4 / (1lu << 32));
+bool eq(uint64_t *a, uint64_t *b, int n) {
+    for (int i = n-1; i >= 0; i--) {
+        if (a[i] != b[i]) return false;
+    }
+    return true;
 }
 
-void t6_mult(uint32_t A[6], uint32_t B[6], uint32_t C[12]){
-    uint32_t Z0[6];
-    uint32_t Z2[6];
-    t3_mult(A, B, Z0);
-    t3_mult(A+3, B+3, Z2);
-
-    printf("Z0: ");
-    for(int i = 0; i < 6; i++){
-        printf("%08X ", Z0[5 - i]);
+void lshift(uint64_t *result, uint64_t* a, int shift, int n){
+    int bit_shift = shift % 64;
+    int word_shift = shift / 64;
+    for (int i = n-1; i >= 0; i--) {
+        result[i] = (a[i] << shift);
+        if (i > 0) result[i] |= (a[i-1] >> (64-shift));
     }
-    printf("\nZ2: ");
-    for(int i = 0; i < 6; i++){
-        printf("%08X ", Z2[5 - i]);
+    for (int i = n-1; i >= 0; i--){
+        if(i - word_shift >= 0) result[i] = result[i - word_shift];
+        else result[i] = 0;
     }
-    printf("\n");
+}
 
-    uint32_t AT[4];
-    uint32_t BT[4];
-    m_add(A, A+3, AT, 3);
-    m_add(B, B+3, BT, 3);
-
-    uint32_t Z1[7];
-
-    t3_mult(AT, BT, Z1);
-    if(AT[3] == 1){
-        m_add(Z1+3, BT, Z1+3, 3);
+void rshift(uint64_t *result, uint64_t* a, int shift, int n){
+    int bit_shift = shift % 64;
+    int word_shift = shift / 64;
+    for (int i = 0; i < n; i++) {
+        result[i] = (a[i] >> shift);
+        if (i < n-1) result[i] |= (a[i+1] << (64-shift));
     }
-    if(BT[3] == 1){
-        m_add(Z1+3, AT, Z1+3, 3);
+    for (int i = 0; i < n; i++){
+        if(i + word_shift < n) result[i] = result[i + word_shift];
+        else result[i] = 0;
     }
-    if(AT[3] == 1 && BT[3] == 1){
-        Z1[6] += 1;
+}
+
+bool add(uint64_t *result, uint64_t *a, uint64_t *b, int n) {
+    uint64_t carry = 0;
+    for (int i = 0; i < n; i++) {
+        uint64_t ai = a[i];
+        uint64_t sum = a[i] + b[i] + carry;
+        result[i] = sum;
+        carry = sum < ai;
     }
+    return carry;
+}
 
-    m_sub(Z1, Z0, Z1, 6);
-    m_sub(Z1, Z2, Z1, 6);
-
-
-
-
-
-    for(int i = 0; i < 6; i++){
-        C[i] = Z0[i];
-        C[i+6] = Z2[i];
+bool sub(uint64_t *result, uint64_t *a, uint64_t *b, int n) {
+    uint64_t carry = 0;
+    for (int i = 0; i < n; i++) {
+        uint64_t ai = a[i];
+        uint64_t diff = a[i] - b[i] - carry;
+        result[i] = diff;
+        carry = diff > ai;
     }
+    return carry;
+}
 
-    m_add(Z1, C+3, C+3, 6);
+void div(uint64_t* quotient, uint64_t* residue, uint64_t* a, uint64_t* b, int n) {
+    memset(quotient, 0, n * sizeof(uint64_t));
+    memcpy(residue, a, n * sizeof(uint64_t));
+
+    uint64_t ta = 0;
+    for(int i = n-1; i >= 0; i--) {
+        if(b[i]==0) ta+=64;
+        else {
+            ta += __builtin_clzll(b[i]);
+            break;
+        }
+    }
+    uint64_t tb = 0;
+    for(int i = n-1; i >= 0; i--) {
+        if(a[i]==0) tb+=64;
+        else {
+            tb += __builtin_clzll(a[i]);
+            break;
+        }
+    }
+    
+
+    int64_t dt = ta - tb;
+    lshift(b, b, dt, n);
+    for(; dt >= 0; dt--) {
+        if(geq(residue, b, n)) {
+            sub(residue, residue, b, n);
+            uint64_t q_word = dt / 64;
+            uint64_t q_bit = dt % 64;
+            quotient[q_word] |= (1ULL << q_bit);
+        }
+        if(dt > 0)rshift(b, b, 1, n);
+    }
+}
+
+void mod_add(uint64_t* result, uint64_t* a, uint64_t* b, uint64_t* mod, int n) {
+    int64_t carry = add(result, a, b, n);
+    int64_t ge = geq(result, mod, n);
+    if (carry | ge) sub(result, result, mod, n);
+}
+
+void mod_double(uint64_t* result, uint64_t* a, uint64_t* mod, int n) {
+    int64_t carry = a[n-1] >> 63;
+    lshift(result, a, 1, n);
+    int64_t ge = geq(result, mod, n);
+    if (carry | ge) sub(result, result, mod, n);
+}
+
+void mod_mult(uint64_t* result, uint64_t* a, uint64_t* b, uint64_t* mod, int n) {
+    memset(result, 0, n * sizeof(uint64_t));
+    for (int i = n-1; i >=0; i--) {
+        for (int j = 63; j >=0; j--) {
+            mod_double(result, result, mod, n);
+            if (a[i] & (1ULL << j)) {
+                mod_add(result, result, b, mod, n);
+            }
+        }
+    }
 }
 
 int main(){
-    uint32_t A[6] = {0x456789AB, 0x56789ABC, 0x6789ABCD};
-    uint32_t B[6] = {0x456789AB, 0x56789ABC, 0x6789ABCD};
-    uint32_t C[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    t3_mult(A, B, C);
-    for(int i = 0; i < 12; i++){
-        printf("%08x ", C[11-i]);
+    uint64_t A[3] = {
+        0xdeadbeeffeedface,
+        0xfacefeedb3332222, 
+        0xc00feebadbadf00d
+    };
+
+    uint64_t B[3] = {
+        0xdeadbeeffeedface, 
+        0x0acefeedb3332222, 
+        0x0000000000000000
+    };
+
+    uint64_t R[3] = {0,0,0};
+    uint64_t Q[3] = {0,0,0};
+
+
+    for(int i = 0; i < 20; i++){
+        div(Q, R, A, B, 3);
+        for(int j = 0; j < 3; j++){
+            printf("%016lX ", R[2-j]);
+        }
+        printf("\n");
+        for(int j = 0; j < 3; j++){
+            printf("%016lX ", Q[2-j]);
+        }        
+        printf("\n\n");
+        memcpy(A, B, 3 * sizeof(uint64_t));
+        memcpy(B, R, 3 * sizeof(uint64_t));
     }
+
+
+    printf("\n");
 }
