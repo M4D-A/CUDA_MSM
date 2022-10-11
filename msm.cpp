@@ -3,54 +3,57 @@
 #include <stdlib.h>
 #include <memory.h>
 #include <stdexcept>
-void print(uint64_t* a, int n) {
-    for (int i = 0; i < n; i++) {
-        printf("%016lX ", a[n-1-i]);
+
+void print(uint32_t a[12]) {
+    for (int i = 11; i >=0; i--) {
+        printf("%08X ", a[i]);
+        if(i%4==0) printf("\n");
     }
     printf("\n");
 }
 
-bool geq(uint64_t *a, uint64_t *b, int n) {
-    for (int i = n-1; i >= 0; i--) {
-        if (a[i] > b[i]) return true;
-        if (a[i] < b[i]) return false;
+///
+
+bool is_negative(uint32_t a[12]) {
+    return a[11] & 0x80000000;
+}
+
+bool is_zero(uint32_t a[12]) {
+    for (int i = 0; i < 12; i++) {
+        if (a[i] != 0) {
+            return false;
+        }
     }
     return true;
 }
 
-bool leq(uint64_t *a, uint64_t *b, int n) {
-    for (int i = n-1; i >= 0; i--) {
-        if (a[i] < b[i]) return true;
-        if (a[i] > b[i]) return false;
+bool geq(uint32_t a[12], uint32_t b[12]) {
+    bool sign_a = is_negative(a);
+    bool sign_b = is_negative(b);
+    if (sign_a != sign_b) {
+        return !sign_a;
+    }
+    for (int i = 11; i >= 0; i--) {
+        if (a[i] != b[i]) {
+            return sign_a ? a[i] < b[i] : a[i] > b[i];
+        }
     }
     return true;
 }
 
-bool eq(uint64_t *a, uint64_t *b, int n) {
-    for (int i = n-1; i >= 0; i--) {
-        if (a[i] != b[i]) return false;
+bool eq(uint32_t a[12], uint32_t b[12]) {
+    for (int i = 11; i >= 0; i--) {
+        if (a[i] != b[i]) {
+            return false;
+        }
     }
     return true;
 }
 
-bool is_zero(uint64_t *a, int n) {
-    for (int i = n-1; i >= 0; i--) {
-        if (a[i] != 0) return false;
-    }
-    return true;
-}
-
-bool is_one(uint64_t *a, int n) {
-    for (int i = n-1; i >= 1; i--) {
-        if (a[i] != 0) return false;
-    }
-    return a[0] == 1;
-}
-
-int lzeroes(uint64_t *a, int n) {
-    uint64_t zeroes = 0;
-    for(int i = n-1; i >= 0; i--) {
-        if(a[i]==0) zeroes += 64;
+int lzeroes(uint32_t a[12]) {
+    int zeroes = 0;
+    for(int i = 11; i >= 0; i--) {
+        if(a[i]==0) zeroes += 32;
         else {
             zeroes += __builtin_clzll(a[i]);
             break;
@@ -59,218 +62,83 @@ int lzeroes(uint64_t *a, int n) {
     return zeroes;
 }
 
-int degree(uint64_t *a, int n) {
-    return n*64 - lzeroes(a, n);
+int degree(uint32_t a[12]) {
+    return 384 - lzeroes(a); //12 *32
 }
 
-void negate(uint64_t *result, uint64_t *a, int n){
-    for(int i = 0; i < n; i++) {
-        result[i] = ~a[i];
+///
+
+void negate(uint32_t res[12], uint32_t a[12]){
+    for(int i = 0; i < 12; i++) {
+        res[i] = ~a[i];
     }
-    for(int i = 0; i < n; i++) {
-        if(result[i] == UINT64_MAX) {
-            result[i] == 0;
+    for(int i = 0; i < 12; i++) {
+        if(res[i] == UINT64_MAX) {
+            res[i] == 0;
         }
         else {
-            result[i]++;
+            res[i]++;
             break;
         }
     }
 }
 
-void lshift(uint64_t *result, uint64_t* a, int shift, int n){
+void lshift(uint32_t res[12], uint32_t a[12], int shift){
     if(shift == 0){
-        memcpy(result, a, n*sizeof(uint64_t));
+        memcpy(res, a, 12*sizeof(uint32_t));
         return;
     }
-    int bit_shift = shift % 64;
-    int word_shift = shift / 64;
-    for (int i = n-1; i >= 0; i--) {
-        result[i] = (a[i] << shift);
-        if (i > 0) result[i] |= (a[i-1] >> (64-shift));
+    int bit_shift = shift % 32;
+    int word_shift = shift / 32;
+    for (int i = 11; i >= 0; i--) {
+        res[i] = (a[i] << shift);
+        if (i > 0) res[i] |= (a[i-1] >> (32-shift));
     }
-    for (int i = n-1; i >= 0; i--){
-        if(i - word_shift >= 0) result[i] = result[i - word_shift];
-        else result[i] = 0;
-    }
-}
-
-void rshift(uint64_t *result, uint64_t* a, int shift, int n){
-    int bit_shift = shift % 64;
-    int word_shift = shift / 64;
-    for (int i = 0; i < n; i++) {
-        result[i] = (a[i] >> shift);
-        if (i < n-1) result[i] |= (a[i+1] << (64-shift));
-    }
-    for (int i = 0; i < n; i++){
-        if(i + word_shift < n) result[i] = result[i + word_shift];
-        else result[i] = 0;
+    for (int i = 11; i >= 0; i--){
+        if(i - word_shift >= 0) res[i] = res[i - word_shift];
+        else res[i] = 0;
     }
 }
 
-bool add(uint64_t *result, uint64_t *a, uint64_t *b, int n) {
+void rshift(uint32_t res[12], uint32_t a[12], int shift){
+    int bit_shift = shift % 32;
+    int word_shift = shift / 32;
+    for (int i = 0; i < 12; i++) {
+        res[i] = (a[i] >> shift);
+        if (i < 11) res[i] |= (a[i+1] << (32-shift));
+    }
+    for (int i = 0; i < 12; i++){
+        if(i + word_shift < 12) res[i] = res[i + word_shift];
+        else res[i] = 0;
+    }
+}
+
+bool add(uint32_t res[12], uint32_t a[12], uint32_t b[12]){
     uint64_t carry = 0;
-    for (int i = 0; i < n; i++) {
-        uint64_t ai = a[i];
-        uint64_t sum = a[i] + b[i] + carry;
-        result[i] = sum;
-        carry = sum < ai;
+    for (int i = 0; i < 12; i++) {
+        uint64_t sum = (uint64_t)a[i] + (uint64_t)b[i] + carry;
+        res[i] = sum & 0xFFFFFFFF;
+        carry = sum >> 32;
     }
     return carry;
 }
 
-bool sub(uint64_t *result, uint64_t *a, uint64_t *b, int n) {
+bool sub(uint32_t res[12], uint32_t a[12], uint32_t b[12]){
     uint64_t carry = 0;
-    for (int i = 0; i < n; i++) {
-        uint64_t ai = a[i];
-        uint64_t diff = a[i] - b[i] - carry;
-        result[i] = diff;
-        carry = diff > ai;
+    for (int i = 0; i < 12; i++) {
+        uint64_t sum = (uint64_t)a[i] - (uint64_t)b[i] - carry;
+        res[i] = sum & 0xFFFFFFFF;
+        carry = sum >> 32;
     }
     return carry;
 }
 
-void mul_sub(uint64_t *result, uint64_t *a, uint64_t *b, uint64_t *c, int n) {
-    memcpy(result, a, (n)*sizeof(uint64_t));
-    result[n] = 0;
-    int m = degree(b, n);
-    lshift(c, c, m, n);
-    for (int i = m; i > 0; i--) {
-        if (b[i/64] & (1ULL << (i%64))) {
-            int carry = sub(result, result, c, n);
-            result[n] -= carry;
-        }
-        if(i>=0) rshift(c, c, 1, n);
-    }
-}
-
-void div(uint64_t* quotient, uint64_t* residue, uint64_t* a, uint64_t* b, int n) {
-    memset(quotient, 0, n * sizeof(uint64_t));
-    memcpy(residue, a, n * sizeof(uint64_t));
-
-    if (is_zero(b, n)) throw std::runtime_error("Division by zero");
-    if(geq(b, a, n)) return;
-
-    if (is_one(b, n)) {
-        memcpy(quotient, a, n * sizeof(uint64_t));
-        memset(residue, 0, n * sizeof(uint64_t));
-        return;
-    }
-
-    if(eq(b, residue, n)) {
-        quotient[0] = 1;
-        memset(residue, 0, n * sizeof(uint64_t));
-        return;
-    }
-
-    uint64_t ta = lzeroes(a, n);
-    uint64_t tb = lzeroes(b, n);
-    
-    int64_t dt = tb - ta;
-    lshift(b, b, dt, n);
-    for(; dt >= 0; dt--) {
-        if(geq(residue, b, n)) {
-            sub(residue, residue, b, n);
-            uint64_t q_word = dt / 64;
-            uint64_t q_bit = dt % 64;
-            quotient[q_word] |= (1ULL << q_bit);
-        }
-        if(dt > 0)rshift(b, b, 1, n);
-    }
-}
-
-void egcd(uint64_t *x, uint64_t *y, uint64_t *d, uint64_t* a, uint64_t* b, int n) {
-    uint64_t OR[8] = {0,0,0,0,0,0,0,0};
-    uint64_t  R[8] = {0,0,0,0,0,0,0,0};
-    memcpy(OR, a, n * sizeof(uint64_t));
-    memcpy( R, b, n * sizeof(uint64_t));
-
-
-    uint64_t OS[8] = {1,0,0,0,0,0,0,0};
-    uint64_t  S[8] = {0,0,0,0,0,0,0,0};
-    uint64_t OT[8] = {0,0,0,0,0,0,0,0};
-    uint64_t  T[8] = {1,0,0,0,0,0,0,0};
-
-    uint64_t Temp[8] = {0,0,0,0,0,0,0,0};
-    uint64_t Q[8] = {0,0,0,0,0,0,0,0};
-
-    while(!is_zero(R,n)){
-        div(Q, Temp, OR, R, n);
-        memcpy(OR, R, n * sizeof(uint64_t));
-        memcpy(R, Temp, n * sizeof(uint64_t));
-
-        mul_sub(Temp, OS, Q, S, n);
-        memcpy(OS, S, n * sizeof(uint64_t));
-        memcpy(S, Temp, n * sizeof(uint64_t));
-
-        mul_sub(Temp, OT, Q, T, n);
-        memcpy(OT, T, n * sizeof(uint64_t));
-        memcpy(T, Temp, n * sizeof(uint64_t));
-
-        print( Q, 4);
-        print(OR, 4);
-        print(OS, 4);
-        print(OT, 4);
-        print( R, 4);
-        print( S, 4);
-        print( T, 4);
-        printf("\n");
-    }
-
-    memcpy(x, OS, (n+1) * sizeof(uint64_t));
-    memcpy(y, OT, (n+1) * sizeof(uint64_t));
-    memcpy(d, OR, (n+1) * sizeof(uint64_t));
-}
-
-void mod_add(uint64_t* result, uint64_t* a, uint64_t* b, uint64_t* mod, int n) {
-    int64_t carry = add(result, a, b, n);
-    int64_t ge = geq(result, mod, n);
-    if (carry | ge) sub(result, result, mod, n);
-}
-
-void mod_double(uint64_t* result, uint64_t* a, uint64_t* mod, int n) {
-    int64_t carry = a[n-1] >> 63;
-    lshift(result, a, 1, n);
-    int64_t ge = geq(result, mod, n);
-    if (carry | ge) sub(result, result, mod, n);
-}
-
-void mod_mult(uint64_t* result, uint64_t* a, uint64_t* b, uint64_t* mod, int n) {
-    memset(result, 0, n * sizeof(uint64_t));
-    for (int i = n-1; i >=0; i--) {
-        for (int j = 63; j >=0; j--) {
-            mod_double(result, result, mod, n);
-            if (a[i] & (1ULL << j)) {
-                mod_add(result, result, b, mod, n);
-            }
-        }
-    }
-}
 
 int main(){
-    uint64_t A[3] = {
-        0xdeadbeeffeedf000,
-        0xfacefeedb3332222, 
-        0xc0ffeebadbadf00d
-    };
-
-    uint64_t B[3] = {
-        0xdeadbeeffeedf000, 
-        0x0acefeedb3332222, 
-        0x0000000000000000
-    };
-
-    uint64_t D[4] = {0,0,0,0};
-    uint64_t S[4] = {0,0,0,0};
-    uint64_t T[4] = {0,0,0,0};
-
-    egcd(S, T, D, A, B, 3);
-    print(S, 3);
-    print(T, 3);
-    print(D, 3);
-    print(A, 3);
-    print(B, 3);
-
-
-    printf("\n");
+    uint32_t a[12] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0x80000000}; // -11
+    uint32_t b[12] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0x80000000}; // -1
+    uint32_t c[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}; // 0
+    
+    add(c, a, b);
+    print(c);
 }
