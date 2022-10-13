@@ -40,6 +40,24 @@ uint64_t R2[6] = {
     0x0155f398d8e0e30f
 };
 
+uint64_t Zero[6] = {
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000
+};
+
+uint64_t One[6] = {
+    0x0000000000000001,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000
+};
+
 void print(uint64_t a[6]) {
     printf("0x");
     for (int i = 5; i >=0; i--) {
@@ -67,6 +85,15 @@ bool eq(uint64_t a[6], uint32_t b[6]) {
     return true;
 }
 
+bool is_zero(uint64_t a[6]) {
+    for (int i = 5; i >= 0; i--) {
+        if (a[i] != 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
 void copy(uint64_t res[6], uint64_t a[6]){
     for(int i=0; i<6; i++) res[i] = a[i];
 }
@@ -80,6 +107,19 @@ void rshift(uint64_t res[6], uint64_t a[6], int shift){
     }
     for (int i = 0; i < 6; i++){
         if(i + word_shift < 6) res[i] = res[i + word_shift];
+        else res[i] = 0;
+    }
+}
+
+void lshift(uint64_t res[6], uint64_t a[6], int shift){
+    int bit_shift = shift % 64;
+    int word_shift = shift / 64;
+    for (int i = 5; i >= 0; i--) {
+        res[i] = (a[i] << shift);
+        if (i > 0) res[i] |= (a[i-1] >> (64-shift));
+    }
+    for (int i = 5; i >= 0; i--){
+        if(i - word_shift >= 0) res[i] = res[i - word_shift];
         else res[i] = 0;
     }
 }
@@ -157,6 +197,62 @@ void prodMon(uint64_t res[6], uint64_t a[6], uint64_t b[6]){
     }
 }
 
+void inverseMon(uint64_t res[6], uint64_t a[6]){
+    uint64_t u[6];
+    uint64_t v[6];
+    uint64_t s[6] = {1,0,0,0,0,0};
+    uint64_t r[6] = {0,0,0,0,0,0};
+    uint64_t k = 0;
+
+    copy(u, P);
+    copy(v, a);
+    
+    while(!is_zero(v)){
+        if((u[0] & 1) == 0){
+            rshift(u, u, 1);
+            lshift(s, s, 1);
+        
+        }
+        else if((v[0] & 1) == 0){
+            rshift(v, v, 1);
+            lshift(r, r, 1);
+        }
+        else if(!geq(v, u)){
+            sub(u, u, v);
+            rshift(u, u, 1);
+            add(r, r, s);
+            lshift(s, s, 1);
+        }
+        else{
+            sub(v, v, u);
+            rshift(v, v, 1);
+            add(s, s, r);
+            lshift(r, r, 1);
+        }
+        k++;
+    }
+    if(geq(r, P)){
+        sub(r, r, P);
+    }
+
+    sub(r, P, r);
+    k -= 377;
+
+    for(int i = 0; i < k; i++){
+        if(r[0] & 1 == 1){
+            add(r, r, P);
+        }
+        rshift(r, r, 1);
+    }
+    copy(res, r);
+}
+
+void inverseMod(uint64_t res[6], uint64_t a[6]){
+    uint64_t r[6] = {0,0,0,0,0,0};
+    inverseMon(r, a);
+    prodMon(res, r, One);
+}
+
 int main(){
     uint64_t a[6] = {
         0x6363e703c89167cc,
@@ -175,13 +271,18 @@ int main(){
         0x11db9d324ccc864,
     };
 
-    uint64_t res[6];
+    uint64_t ai[6];
+    uint64_t bi[6];
 
-    for(int i = 0; i < 1000000; i++){
-        prodMon(res, a, b);
-        copy(b,a);
-        copy(a,res);
-    }
-    print(a);
-    print(b);
+    uint64_t resa[6];
+    uint64_t resb[6];
+
+    inverseMod(ai, a);
+    inverseMod(bi, b);
+
+    prodMod(resa, a, ai);
+    prodMod(resb, b, bi);
+
+    print(resa);
+    print(resb);
 }
