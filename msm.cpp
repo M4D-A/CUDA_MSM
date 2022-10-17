@@ -76,7 +76,7 @@ bool geq(uint64_t a[6], uint64_t b[6]) {
     return true;
 }
 
-bool eq(uint64_t a[6], uint32_t b[6]) {
+bool eq(uint64_t a[6], uint64_t b[6]) {
     for (int i = 5; i >= 0; i--) {
         if (a[i] != b[i]) {
             return false;
@@ -92,6 +92,18 @@ bool is_zero(uint64_t a[6]) {
         }
     }
     return true;
+}
+
+uint64_t leading_zeros(uint64_t a[6]) {
+    uint64_t result = 0;
+    for (int i = 5; i >= 0; i--) {
+        if (a[i] == 0) {
+            result += 64;
+        } else {
+            result += __builtin_clzll(a[i]);
+        }
+    }
+    return result;
 }
 
 void copy(uint64_t res[6], uint64_t a[6]){
@@ -155,12 +167,18 @@ void addMod(uint64_t res[6], uint64_t a[6], uint64_t b[6]) {
 
 void subMod(uint64_t res[6], uint64_t a[6], uint64_t b[6]) {
     if(geq(a, b)) {
-        printf("aaa\n");
         sub(res, a, b);
     } else {
-        printf("bbb\n");
         add(res, a, P);
         sub(res, res, b);
+    }
+}
+
+void negMod(uint64_t res[6], uint64_t a[6]) {
+    if(is_zero(a)) {
+        copy(res, a);
+    } else {
+        sub(res, P, a);
     }
 }
 
@@ -253,36 +271,149 @@ void inverseMod(uint64_t res[6], uint64_t a[6]){
     prodMon(res, r, One);
 }
 
+bool isPoint(uint64_t p[12]){
+    uint64_t y2[6];
+    prodMod(y2, p+6, p+6);
+
+    uint64_t x2[6], x3[6];
+    prodMod(x2, p, p);
+    prodMod(x3, x2, p);
+    addMod(x3,x3,One);
+    return eq(x3, y2);
+}
+
+void copyP(uint64_t res[12], uint64_t p[12]){
+    for(int i = 0; i < 12; i++) res[i] = p[i];
+}
+
+void doubleP(uint64_t res[12], uint64_t p[12]){
+    uint64_t s[6], t[6];
+
+    addMod(res, p+6, p+6); // 2y
+    inverseMod(res+6, res);  // 1/2y <- 
+
+    prodMod(res, p, p); // x^2
+    addMod(s, res, res); // 2x^2
+    addMod(res, res, s); // 3x^2
+    
+    prodMod(s, res, res+6); // 3x^2/2y
+    prodMod(res, s, s); // s^2
+
+    subMod(res, res, p); // s^2 - x
+    subMod(res, res, p); // s^2 - 2x = xr
+
+    subMod(t, res, p); // xr - x
+    prodMod(res+6, s, t); // s(xr - x)
+    addMod(res+6, res+6, p+6); // s(xr - x) - y
+    negMod(res+6, res+6); // y' = -(s(xr - x) - y)
+}
+
+void addP(uint64_t res[12], uint64_t p[12], uint64_t q[12]){
+    uint64_t s[6], t[6];
+
+    if(is_zero(p) && is_zero(p+6)){
+        copyP(res, q);
+        return;
+    }
+
+    else if(is_zero(q) && is_zero(q+6)){
+        copyP(res, p);
+        return;
+    }
+
+    else if(eq(p, q)){
+        if(eq(p+6, q+6)){
+            doubleP(res, p);
+        } else {
+            printf("p = -q\n");
+            memset(res, 0, 12*sizeof(uint64_t));
+        }
+        return;
+    }
+
+    subMod(res, q, p); // xq - xp
+    inverseMod(res+6, res); // 1/(xq - xp)
+
+    subMod(res, q+6, p+6); // yq - yp
+
+    prodMod(s, res, res+6); // s = (yq - yp)/(xq - xp)
+
+    prodMod(res, s, s); // s^2
+    subMod(res, res, p); // s^2 - xp
+    subMod(res, res, q); // s^2 - xp - xq = xr
+
+    subMod(t, res, p); // xr - xp
+    prodMod(res+6, s, t); // s(xr - xp)
+    addMod(res+6, res+6, p+6); // s(xr - xp) + yp
+    negMod(res+6, res+6); // y' = -(s(xr - xp) + yp)
+}
+
+void negP(uint64_t res[12], uint64_t p[12]){
+    copy(res, p);
+    negMod(res+6, p+6);
+}
+
+void scalarP(uint64_t res[12], uint64_t p[12], uint64_t k[6]){
+    uint64_t q[12], tq[12], tres[12];
+    memset(res, 0, 12*sizeof(uint64_t));
+    copyP(q, p);
+    uint64_t bits = 384 - leading_zeros(k);
+    printf("bits = %lu\n", bits);
+    for(int i = 0; i < bits; i++){
+        int bit = i % 64;
+        int word = i / 64;
+        if(k[word] >> bit & 1){
+            addP(tres, res, q);
+            copy(res, tres);
+            copy(res + 6, tres + 6);
+        }
+
+        doubleP(tq, q);
+        copyP(q, tq);
+    }
+}
+
+
+
 int main(){
-    uint64_t a[6] = {
-        0x6363e703c89167cc,
-        0x83368d7243d7e492,
-        0x42ee81675b84219b,
-        0x49a9193f7d21d636,
-        0xaf5a0dfc4f53d7bc,
-        0x128180471539142,
+    uint64_t p[12] = {
+        0xeab9b16eb21be9ef,
+        0xd5481512ffcd394e,
+        0x188282c8bd37cb5c,
+        0x85951e2caa9d41bb,
+        0xc8fc6225bf87ff54,
+        0x008848defe740a67,
+
+        0xfd82de55559c8ea6,
+        0xc2fe3d3634a9591a,
+        0x6d182ad44fb82305,
+        0xbd7fb348ca3e52d9,
+        0x1f674f5d30afeec4,
+        0x01914a69c5102eff,
     };
-    uint64_t b[6] = {
-        0x5bf1af2de2eb371d,
-        0x5f4083ef8f614993,
-        0x2eb35f8a0cb06c48,
-        0x93469109d71ea0e7,
-        0x71b544c329b5a0bf,
-        0x11db9d324ccc864,
+
+    uint64_t k[6] = {
+        0x0000000000041111,
+        0x0000000000000000,
+        0x0000000000000000,
+        0x0000000000000000,
+        0x0000000000000000,
+        0x0000000000000000,
     };
 
-    uint64_t ai[6];
-    uint64_t bi[6];
+    uint64_t res[12] = {0,0,0,0,0,0,0,0,0,0,0,0};
+    uint64_t temp[12];
+    uint64_t res2[12] = {0,0,0,0,0,0,0,0,0,0,0,0};
 
-    uint64_t resa[6];
-    uint64_t resb[6];
 
-    inverseMod(ai, a);
-    inverseMod(bi, b);
+    for(int i = 0; i < 0x41111; i++){
+        addP(temp, p, res);
+        copyP(res, temp);
+    }
 
-    prodMod(resa, a, ai);
-    prodMod(resb, b, bi);
-
-    print(resa);
-    print(resb);
+    scalarP(res2, p, k);
+    print(res);
+    print(res+6);
+    print(res2);
+    print(res2+6);
 }
