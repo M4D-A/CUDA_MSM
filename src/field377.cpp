@@ -36,8 +36,7 @@ uint64_t R2[6] = {
     0x0155f398d8e0e30f
 };
 
-
-void randomMod(uint64_t res[6]){
+void random_mod(uint64_t res[6]){
     for(int i = 0; i < 5; i++) res[i] = ((uint64_t)rand()<<32) | rand();
     res[5] = (((uint64_t)rand()<<32) | rand()) & 0x01ae3a4617c510ea;
     // while(geq(res, P)) {
@@ -45,21 +44,21 @@ void randomMod(uint64_t res[6]){
     // }
 }
 
-void addMod(uint64_t res[6], uint64_t a[6], uint64_t b[6]) {
+void add_mod(uint64_t res[6], uint64_t a[6], uint64_t b[6]) {
     add(res, a, b);
     if(geq(res, P)) {
         sub(res, res, P);
     }
 }
 
-void doubleMod(uint64_t res[6], uint64_t a[6]) {
+void double_mod(uint64_t res[6], uint64_t a[6]) {
     lshift(res, a);
     if(geq(res, P)) {
         sub(res, res, P);
     }
 }
 
-void subMod(uint64_t res[6], uint64_t a[6], uint64_t b[6]) {
+void sub_mod(uint64_t res[6], uint64_t a[6], uint64_t b[6]) {
     if(geq(a, b)) {
         sub(res, a, b);
     } else {
@@ -68,7 +67,7 @@ void subMod(uint64_t res[6], uint64_t a[6], uint64_t b[6]) {
     }
 }
 
-void negMod(uint64_t res[6], uint64_t a[6]) {
+void neg_mod(uint64_t res[6], uint64_t a[6]) {
     if(is_zero(a)) {
         copy(res, a);
     } else {
@@ -76,19 +75,19 @@ void negMod(uint64_t res[6], uint64_t a[6]) {
     }
 }
 
-void prodMod(uint64_t res[6], uint64_t a[6], uint64_t b[6]){
+void mult_mod(uint64_t res[6], uint64_t a[6], uint64_t b[6]){
     memset(res, 0, 6*sizeof(uint64_t));
     for(uint32_t i=376; i!=UINT32_MAX; i--){
         uint32_t bit = i & 63;
         uint32_t word = i >> 6;
-        doubleMod(res, res);
+        double_mod(res, res);
         if(a[word] >> bit & 1){
-            addMod(res, res, b);
+            add_mod(res, res, b);
         }
     }
 }
 
-void prodMon(uint64_t res[6], uint64_t a[6], uint64_t b[6]){
+void mult_mon(uint64_t res[6], uint64_t a[6], uint64_t b[6]){
     memset(res, 0, 6*sizeof(uint64_t));
     int a0 = a[0] & 1;
     for(int i=0; i < 377; i++){
@@ -109,15 +108,15 @@ void prodMon(uint64_t res[6], uint64_t a[6], uint64_t b[6]){
     }
 }
 
-void toMon(uint64_t res[6], uint64_t a[6]){
-    prodMon(res, a, R2);
+void to_mon(uint64_t res[6], uint64_t a[6]){
+    mult_mon(res, a, R2);
 }
 
-void fromMon(uint64_t res[6], uint64_t a[6]){
-    prodMon(res, a, One);
+void from_mon(uint64_t res[6], uint64_t a[6]){
+    mult_mon(res, a, One);
 }
 
-void inverseMon(uint64_t res[6], uint64_t a[6]){
+void inverse_mon(uint64_t res[6], uint64_t a[6]){
     uint64_t u[6];
     uint64_t v[6];
     uint64_t s[6] = {1,0,0,0,0,0};
@@ -167,8 +166,8 @@ void inverseMon(uint64_t res[6], uint64_t a[6]){
     copy(res, r);
 }
 
-void inverseMod(uint64_t res[6], uint64_t a[6]){
+void inverse_mod(uint64_t res[6], uint64_t a[6]){
     uint64_t r[6] = {0,0,0,0,0,0};
-    inverseMon(r, a);
-    prodMon(res, r, One);
+    inverse_mon(r, a);
+    mult_mon(res, r, One);
 }

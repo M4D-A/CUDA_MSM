@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <memory.h>
 #include <stdexcept>
+#include <gtest/gtest.h>
 
 extern uint64_t Zero[6];
 extern uint64_t One[6];
