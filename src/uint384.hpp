@@ -8,6 +8,8 @@
 extern uint64_t Zero[6];
 extern uint64_t One[6];
 
+uint64_t random64();
+void random384(uint64_t res[6]);
 void print(uint64_t a[6]);
 bool geq(uint64_t a[6], uint64_t b[6]);
 bool eq(uint64_t a[6], uint64_t b[6]);
