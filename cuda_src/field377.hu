@@ -1,0 +1,134 @@
+#include <inttypes.h>
+#include <stdio.h>
+
+#ifdef __CUDA_ARCH__
+#define __const__  __constant__ const
+#else
+#define __const__ const
+#endif
+
+__const__ uint64_t One[6] = {
+    0x0000000000000001,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000
+};
+__const__ uint64_t P[6] = {
+    0x8508c00000000001,
+    0x170b5d4430000000,
+    0x1ef3622fba094800,
+    0x1a22d9f300f5138f,
+    0xc63b05c06ca1493b,
+    0x01ae3a4617c510ea
+};
+__const__ uint64_t R[6] = {
+    0x7af73fffffffffff,
+    0xe8f4a2bbcfffffff,
+    0xe10c9dd045f6b7ff,
+    0xe5dd260cff0aec70,
+    0x39c4fa3f935eb6c4,
+    0x0051c5b9e83aef15
+};
+__const__ uint64_t Ri[6] = {
+    0x2b0909a28934f3a1,
+    0x83264aa55c1cfac6,
+    0x1accd49ca2a491ae,
+    0xa28b2dce9e80e9a6,
+    0x34d313ea126f7c08,
+    0x0161de1ee3625456
+};
+__const__ uint64_t R2[6] = {
+    0x30832a73a1b25004,
+    0xa404dcf0bcb14011,
+    0xb7520b89a32a1bcc,
+    0x6154e2a7cfb8d35a,
+    0x475fc7349417d690,
+    0x0155f398d8e0e30f
+};
+__const__ uint64_t G1[12] = {
+    0xeab9b16eb21be9ef,
+    0xd5481512ffcd394e,
+    0x188282c8bd37cb5c,
+    0x85951e2caa9d41bb,
+    0xc8fc6225bf87ff54,
+    0x008848defe740a67,
+    0xfd82de55559c8ea6,
+    0xc2fe3d3634a9591a,
+    0x6d182ad44fb82305,
+    0xbd7fb348ca3e52d9,
+    0x1f674f5d30afeec4,
+    0x01914a69c5102eff,
+};
+
+
+//// 1. UINT-384 Arithmetic ////
+
+uint64_t random64();
+void random384(uint64_t res[6]);
+void print(uint64_t a[6]);
+__host__ __device__ bool eq(uint64_t a[6], uint64_t b[6]);
+__host__ __device__ bool geq(uint64_t a[6], uint64_t b[6]);
+__host__ __device__ bool is_zero(uint64_t a[6]);
+__host__ __device__ uint64_t leading_zeros(uint64_t a[6]);
+
+__host__ __device__ void copy(uint64_t res[6], uint64_t a[6]);
+__host__ __device__ void rshift(uint64_t res[6], uint64_t a[6]);
+__host__ __device__ void lshift(uint64_t res[6], uint64_t a[6]);
+__host__ __device__ bool add(uint64_t res[6], uint64_t a[6], uint64_t b[6]);
+__host__ __device__ bool sub(uint64_t res[6], uint64_t a[6], uint64_t b[6]);
+
+
+
+//// 2. 377bit Field Arithmethic ////
+
+void random_mod(uint64_t res[6]);
+__host__ __device__ void add_mod(uint64_t res[6], uint64_t a[6], uint64_t b[6]);
+__host__ __device__ void sub_mod(uint64_t res[6], uint64_t a[6], uint64_t b[6]);
+__host__ __device__ void neg_mod(uint64_t res[6], uint64_t a[6]);
+__host__ __device__ void mult_mod(uint64_t res[6], uint64_t a[6], uint64_t b[6]);
+__host__ __device__ void mult_mon(uint64_t res[6], uint64_t a[6], uint64_t b[6]);
+__host__ __device__ void to_mon(uint64_t res[6], uint64_t a[6]);
+__host__ __device__ void from_mon(uint64_t res[6], uint64_t a[6]);
+__host__ __device__ void inverse_mon(uint64_t res[6], uint64_t a[6]);
+__host__ __device__ void inverse_mod(uint64_t res[6], uint64_t a[6]);
+
+
+//// 3. Elliptic Curve Points Arithmetic ////
+
+void print_P(uint64_t P[12]);
+void random_P(uint64_t res[12]);
+
+__host__ __device__ bool is_zero_P(uint64_t P[12]);
+__host__ __device__ bool is_P(uint64_t P[12]);
+__host__ __device__ bool eq_P(uint64_t P[12], uint64_t Q[12]);
+__host__ __device__ void copy_P(uint64_t res[12], uint64_t P[12]);
+__host__ __device__ void double_P(uint64_t res[12], uint64_t P[12]);
+__host__ __device__ void add_P(uint64_t res[12], uint64_t P[12], uint64_t q[12]);
+__host__ __device__ void neg_P(uint64_t res[12], uint64_t P[12]);
+__host__ __device__ void scalar_P(uint64_t res[12], uint64_t P[12], uint64_t k[6]);
+__host__ __device__ void scalar_P(uint64_t res[12], uint64_t P[12], uint64_t k);
+
+
+__host__ __device__ void to_mon_P(uint64_t R[12], uint64_t P[12]);
+__host__ __device__ void from_mon_P(uint64_t R[12], uint64_t P[12]);
+__host__ __device__ void double_mon_P(uint64_t R[12], uint64_t P[12]);
+__host__ __device__ void add_mon_P(uint64_t R[12], uint64_t P[12], uint64_t Q[12]);
+__host__ __device__ void scalar_mon_P(uint64_t R[12], uint64_t P[12], uint64_t k[6]);
+
+__global__ void add_P_kernel(
+    uint64_t* data_a,
+    uint64_t* data_b,
+    uint32_t  data_num,
+    uint64_t* data_out);
+
+void trivial_msm(uint64_t R[12], uint64_t *P, uint64_t *k, uint64_t n);
+void mon_msm(uint64_t R[12], uint64_t *P, uint64_t *k, uint64_t n);
+void bucket_msm(uint64_t R[12], uint64_t *P, uint64_t *k, uint64_t n);
+
+__global__ void msm_kernel(
+    uint64_t* data_P,
+    uint64_t* data_k,
+    uint32_t  data_num,
+    uint64_t* data_out);
