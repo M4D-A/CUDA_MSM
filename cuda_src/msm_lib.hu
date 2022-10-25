@@ -80,7 +80,6 @@ __host__ __device__ bool add(uint64_t res[6], uint64_t a[6], uint64_t b[6]);
 __host__ __device__ bool sub(uint64_t res[6], uint64_t a[6], uint64_t b[6]);
 
 
-
 //// 2. 377bit Field Arithmethic ////
 
 void random_mod(uint64_t res[6]);
@@ -117,18 +116,15 @@ __host__ __device__ void double_mon_P(uint64_t R[12], uint64_t P[12]);
 __host__ __device__ void add_mon_P(uint64_t R[12], uint64_t P[12], uint64_t Q[12]);
 __host__ __device__ void scalar_mon_P(uint64_t R[12], uint64_t P[12], uint64_t k[6]);
 
-__global__ void add_P_kernel(
-    uint64_t* data_a,
-    uint64_t* data_b,
-    uint32_t  data_num,
-    uint64_t* data_out);
+
+//// 4. MSM Algorithms ////
 
 void trivial_msm(uint64_t R[12], uint64_t *P, uint64_t *k, uint64_t n);
 void mon_msm(uint64_t R[12], uint64_t *P, uint64_t *k, uint64_t n);
 void bucket_msm(uint64_t R[12], uint64_t *P, uint64_t *k, uint64_t n);
 
-__global__ void msm_kernel(
-    uint64_t* data_P,
-    uint64_t* data_k,
-    uint32_t  data_num,
-    uint64_t* data_out);
+__global__ void scalar_kernel(uint64_t* data_out, uint64_t* data_k, uint64_t* data_P, uint64_t data_num);
+__global__ void first_reduce(uint64_t* data_out, uint64_t* data_P, uint64_t data_num);
+__global__ void double_reduce(uint64_t* data_out, uint64_t* data_P, uint64_t data_num);
+
+void cuda_msm(uint64_t R[12], uint64_t *P_host, uint64_t *k_host, uint64_t n);

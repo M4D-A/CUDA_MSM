@@ -1,5 +1,4 @@
-#include "field377.hu"
-
+#include "msm_lib.hu"
 
 
 //// 1. UINT-384 Arithmetic ////
@@ -245,28 +244,15 @@ __host__ __device__ void inverse_mod(uint64_t res[6], uint64_t a[6]){
     mult_mon(res, r, (uint64_t*)One);
 }
 
-__global__ void add_mod_kernel(
-    uint64_t* data_a,
-    uint64_t* data_b,
-    uint32_t  data_num,
-    uint64_t* data_out){
-
-    uint32_t thread_id = (blockIdx.x * blockDim.x) + threadIdx.x;
-    if (thread_id < data_num){
-        uint32_t index = thread_id * 6;
-        add_mod(data_out + index, data_a + index, data_b + index);
-    }
-}
-
 
 
 //// 3. Elliptic Curve Points Arithmetic ////
-
 
 void print_P(uint64_t P[12]){
     print(P);
     print(P+6);
 }
+
 void random_P(uint64_t res[12]){
     uint64_t k[6];
     random_mod(k);
@@ -498,19 +484,8 @@ __host__ __device__ void scalar_mon_P(uint64_t R[12], uint64_t P[12], uint64_t k
     }
 }
 
-__global__ void add_P_kernel(
-    uint64_t* data_a,
-    uint64_t* data_b,
-    uint32_t  data_num,
-    uint64_t* data_out){
 
-    uint32_t thread_id = (blockIdx.x * blockDim.x) + threadIdx.x;
-    if (thread_id < data_num){
-        uint32_t index = thread_id * 12;
-        add_P(data_out + index, data_a + index, data_b + index);
-    }
-}
-
+//// 4. MSM Algorithms ////
 
 void trivial_msm(uint64_t R[12], uint64_t *P, uint64_t *k, uint64_t n){
     uint64_t T1[12], T2[12];
@@ -577,32 +552,120 @@ void bucket_msm(uint64_t R[12], uint64_t *P, uint64_t *k, uint64_t n){
 }
 
 
-__global__ void msm_kernel(
-    uint64_t* data_P,
+__global__ void scalar_kernel(
+    uint64_t* data_out,
     uint64_t* data_k,
-    uint32_t  data_num,
-    uint64_t* data_out){
+    uint64_t* data_P,
+    uint64_t  data_num){
     
-    __shared__ uint64_t buckets[12*256];
+    uint64_t P[12], k[6], R[12];
+    uint64_t i = blockIdx.x * blockDim.x + threadIdx.x;
 
-    uint32_t idx1 = threadIdx.x;
-    uint32_t idx2 = blockIdx.x % 256;
-    uint64_t bits_val = idx1 + idx2 * 256;
+    if(i < data_num){
+        copy_P(P, data_P + 12*i);
+        copy(k, data_k + 6*i);
+        scalar_P(R, P, k);
+        copy_P(data_out + 12*i, R);
+    }
+}
 
-    uint32_t bucket_id = blockIdx.x / 256;
-    uint32_t word_id = bucket_id / 4;
-    uint32_t shift = bucket_id % 4;
+__global__ void first_reduce(
+    uint64_t* data_out,
+    uint64_t* data_P,
+    uint64_t  data_num){
+    
+    uint64_t P[12];
+    uint64_t R[12] = {0,0,0,0,0,0,0,0,0,0,0,0};
 
-    uint64_t sum_P[12] = {0,0,0,0,0,0,0,0,0,0,0,0};
-    for(uint32_t i = 0; i < data_num; i++){
-        uint64_t* P = data_P + i * 12;
-        if(P[word_id] >> (shift * 16) & 0xFFFF == bits_val){
-            add_P(sum_P, sum_P, P);
-        }
+    uint64_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+    uint64_t per_thread = data_num / (gridDim.x * blockDim.x); // points per thread
+    uint64_t residue = data_num % (gridDim.x * blockDim.x); // residue points
+    uint64_t pid = tid * per_thread; // point id
+    
+    if (tid < residue) {
+        per_thread += 1;
+        pid += tid;
+    }
+    else {
+        pid += residue;
     }
 
-    scalar_P(&buckets[idx1 * 12], sum_P, bucket_id);
+    uint64_t stop = pid + per_thread;
 
+    while(pid < data_num && pid < stop){
+        copy_P(P, R);
+        add_P(R, P, data_P + 12*pid);
+        pid++;
+    }
+
+    copy_P(data_out + 12*tid, R);
+}
+
+__global__ void double_reduce(
+    uint64_t* data_out,
+    uint64_t* data_P,
+    uint64_t  data_num){
+
+    uint64_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+    uint64_t p1 = 2*tid;
+    uint64_t p2 = 2*tid + 1;
+
+    uint64_t P1[12], P2[12], R[12];
+    if(p1 < data_num){
+        copy_P(P1, data_P + 12*p1);
+        if(p2 < data_num){
+            copy_P(P2, data_P + 12*p2);
+            add_P(R, P1, P2);
+        }
+        else{
+            copy_P(R, P1);
+        }
+        copy_P(data_out + 12*tid, R);
+    }
+}
+
+void cuda_msm(uint64_t R[12], uint64_t *P_host, uint64_t *k_host, uint64_t n){
+    uint64_t data_k_size = n * 6 * sizeof(uint64_t);
+    uint64_t data_P_size = n * 12 * sizeof(uint64_t);
+    uint64_t data_R_size = n * 12 * sizeof(uint64_t);
+
+    uint64_t *R_host = (uint64_t*)malloc(data_R_size);
+
+    uint64_t tp_block = 256;
+    uint64_t scalar_blocks = (n + tp_block - 1) / tp_block;
+    uint64_t reduce_blocks = 10;
+    uint64_t threads = reduce_blocks*tp_block;
+
+    uint64_t *data_k_dev;
+    uint64_t *data_P_dev;
+    uint64_t *data_R_dev;
+
+    cudaMalloc((void**)&data_k_dev, data_k_size);
+    cudaMalloc((void**)&data_P_dev, data_P_size);
+    cudaMalloc((void**)&data_R_dev, data_R_size);
+
+    cudaMemcpy(data_k_dev, k_host, data_k_size, cudaMemcpyHostToDevice);
+    cudaMemcpy(data_P_dev, P_host, data_P_size, cudaMemcpyHostToDevice);
+
+    scalar_kernel<<<scalar_blocks, tp_block>>>(data_R_dev, data_k_dev, data_P_dev, n);
+    cudaMemset(data_P_dev, 0, data_P_size);
+    cudaMemcpy(R_host, data_R_dev, data_R_size, cudaMemcpyDeviceToHost);
     
 
+
+    first_reduce<<<reduce_blocks, tp_block>>>(data_P_dev, data_R_dev, n);
+    cudaMemset(data_R_dev, 0, data_R_size);
+
+    uint64_t elements = tp_block * reduce_blocks; // 2560
+    while(elements > 1){
+        uint64_t dr_blocks = (elements + tp_block - 1) / tp_block;
+        uint64_t dr_tpb = (elements + dr_blocks - 1) / dr_blocks;
+
+        double_reduce<<<dr_blocks, dr_tpb>>>(data_R_dev, data_P_dev, elements);
+        cudaMemset(data_P_dev, 0, data_P_size);
+        cudaMemcpy(data_P_dev, data_R_dev, data_P_size, cudaMemcpyDeviceToDevice);
+        elements = (elements + 1) / 2;
+    }
+
+    cudaMemcpy(R, data_R_dev, 12*sizeof(uint64_t), cudaMemcpyDeviceToHost);
 }
