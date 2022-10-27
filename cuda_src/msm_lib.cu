@@ -498,61 +498,7 @@ void trivial_msm(uint64_t R[12], uint64_t *P, uint64_t *k, uint64_t n){
     }
 }
 
-void mon_msm(uint64_t R[12], uint64_t *P, uint64_t *k, uint64_t n){
-    uint64_t T1[12], T2[12];
-    memset(R, 0, 12*sizeof(uint64_t));
-    for(uint64_t i = 0; i < n; i++){
-        to_mon_P(T1, P + 12*i);
-        scalar_mon_P(T2, T1, k + 6*i);
-        add_mon_P(T1, R, T2);
-        copy_P(R, T1);
-    }
-    from_mon_P(T1, R);
-    copy_P(R, T1);
-}
-
-void bucket_msm(uint64_t R[12], uint64_t *P, uint64_t *k, uint64_t n){
-    memset(R, 0, 12*sizeof(uint64_t));
-    uint64_t buckets[65536][12];
-    uint64_t temp_sum[12], temp[12], bucket_sum[12];
-
-
-    for(uint64_t w = 0; w < 6; w++){
-        for(uint64_t b = 0; b < 4; b++){
-            printf("w = %lu, b = %lu\n", w, b);
-            memset(buckets, 0, 65536*12*sizeof(uint64_t));
-            memset(temp_sum, 0, 12*sizeof(uint64_t));
-            memset(temp, 0, 12*sizeof(uint64_t));
-            memset(bucket_sum, 0, 12*sizeof(uint64_t));
-
-            uint64_t shift = b*16;
-            for(uint64_t i = 0; i < n; i++){
-                uint64_t index = k[6*i + w] >> shift & 0xFFFF;
-                add_P(temp, buckets[index], P + 12*i);
-                copy_P(buckets[index], temp);
-            }
-            
-            memset(temp_sum, 0, 12*sizeof(uint64_t));
-            memset(temp, 0, 12*sizeof(uint64_t));
-
-            for(uint64_t i = 65535; i >= 1; i--){
-                add_P(temp, temp_sum, buckets[i]);
-                copy_P(temp_sum, temp);
-
-                add_P(temp, bucket_sum, temp_sum);
-                copy_P(bucket_sum, temp);
-            }
-            uint64_t shift_mul[6] = {0, 0, 0, 0, 0, 0,};
-            shift_mul[w] = 1lu << shift;
-            scalar_P(temp, bucket_sum, shift_mul);
-            add_P(temp_sum, R, temp);
-            copy_P(R, temp_sum);
-        }
-    }
-}
-
-
-__global__ void scalar_kernel(
+__global__ void map_scalar(
     uint64_t* data_out,
     uint64_t* data_k,
     uint64_t* data_P,
@@ -569,7 +515,7 @@ __global__ void scalar_kernel(
     }
 }
 
-__global__ void first_reduce(
+__global__ void linear_reduce(
     uint64_t* data_out,
     uint64_t* data_P,
     uint64_t  data_num){
@@ -601,7 +547,7 @@ __global__ void first_reduce(
     copy_P(data_out + 12*tid, R);
 }
 
-__global__ void double_reduce(
+__global__ void log_reduce(
     uint64_t* data_out,
     uint64_t* data_P,
     uint64_t  data_num){
@@ -647,13 +593,13 @@ void cuda_msm(uint64_t R[12], uint64_t *P_host, uint64_t *k_host, uint64_t n){
     cudaMemcpy(data_k_dev, k_host, data_k_size, cudaMemcpyHostToDevice);
     cudaMemcpy(data_P_dev, P_host, data_P_size, cudaMemcpyHostToDevice);
 
-    scalar_kernel<<<scalar_blocks, tp_block>>>(data_R_dev, data_k_dev, data_P_dev, n);
+    map_scalar<<<scalar_blocks, tp_block>>>(data_R_dev, data_k_dev, data_P_dev, n);
     cudaMemset(data_P_dev, 0, data_P_size);
     cudaMemcpy(R_host, data_R_dev, data_R_size, cudaMemcpyDeviceToHost);
     
 
 
-    first_reduce<<<reduce_blocks, tp_block>>>(data_P_dev, data_R_dev, n);
+    linear_reduce<<<reduce_blocks, tp_block>>>(data_P_dev, data_R_dev, n);
     cudaMemset(data_R_dev, 0, data_R_size);
 
     uint64_t elements = tp_block * reduce_blocks; // 2560
@@ -661,7 +607,7 @@ void cuda_msm(uint64_t R[12], uint64_t *P_host, uint64_t *k_host, uint64_t n){
         uint64_t dr_blocks = (elements + tp_block - 1) / tp_block;
         uint64_t dr_tpb = (elements + dr_blocks - 1) / dr_blocks;
 
-        double_reduce<<<dr_blocks, dr_tpb>>>(data_R_dev, data_P_dev, elements);
+        log_reduce<<<dr_blocks, dr_tpb>>>(data_R_dev, data_P_dev, elements);
         cudaMemset(data_P_dev, 0, data_P_size);
         cudaMemcpy(data_P_dev, data_R_dev, data_P_size, cudaMemcpyDeviceToDevice);
         elements = (elements + 1) / 2;

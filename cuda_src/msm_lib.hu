@@ -120,11 +120,9 @@ __host__ __device__ void scalar_mon_P(uint64_t R[12], uint64_t P[12], uint64_t k
 //// 4. MSM Algorithms ////
 
 void trivial_msm(uint64_t R[12], uint64_t *P, uint64_t *k, uint64_t n);
-void mon_msm(uint64_t R[12], uint64_t *P, uint64_t *k, uint64_t n);
-void bucket_msm(uint64_t R[12], uint64_t *P, uint64_t *k, uint64_t n);
 
-__global__ void scalar_kernel(uint64_t* data_out, uint64_t* data_k, uint64_t* data_P, uint64_t data_num);
-__global__ void first_reduce(uint64_t* data_out, uint64_t* data_P, uint64_t data_num);
-__global__ void double_reduce(uint64_t* data_out, uint64_t* data_P, uint64_t data_num);
+__global__ void map_scalar(uint64_t* data_out, uint64_t* data_k, uint64_t* data_P, uint64_t data_num);
+__global__ void linear_reduce(uint64_t* data_out, uint64_t* data_P, uint64_t data_num);
+__global__ void log_reduce(uint64_t* data_out, uint64_t* data_P, uint64_t data_num);
 
 void cuda_msm(uint64_t R[12], uint64_t *P_host, uint64_t *k_host, uint64_t n);

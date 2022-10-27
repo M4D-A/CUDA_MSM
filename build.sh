@@ -1,4 +1,4 @@
-nvcc -O3 msm.cu cuda_src/*.cu;
+gcc -O3 cpu_src/*.cpp -lstdc++;
 if [ $? -eq 0 ]; then
     echo "Compilation successful";
     ./a.out;
