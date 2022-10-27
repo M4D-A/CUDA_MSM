@@ -21,6 +21,7 @@ int main(){
     std::chrono::duration<double> gen_diff = gen_end - gen_start;
     printf("Generate time: %f\n", gen_diff.count());
 
+    cuda_mon_msm(cmR, P_host, k_host, data_num);
     auto cmmsm_start = std::chrono::high_resolution_clock::now();
     cuda_mon_msm(cmR, P_host, k_host, data_num);
     auto cmmsm_end = std::chrono::high_resolution_clock::now();
