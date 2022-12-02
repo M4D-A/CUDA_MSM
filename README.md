@@ -1,2 +1,2 @@
-# Rotor_MSM
+# MSM
 EC MSM using CUDA accelerated Bucket algortihm
